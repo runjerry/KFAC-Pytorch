@@ -1,7 +1,7 @@
 '''Train CIFAR10/CIFAR100 with PyTorch.'''
 import argparse
 import os
-from optimizers import (KFACOptimizer, EKFACOptimizer)
+from optimizers import (KFACOptimizer, KerKFACOptimizer, EKFACOptimizer)
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import MultiStepLR
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from utils.network_utils import get_network
-from utils.data_utils import get_dataloader
+from utils.data_utils import get_dataloader, set_random_seed
 
 
 # fetch args
@@ -36,6 +36,7 @@ parser.add_argument('--load_path', default='', type=str)
 parser.add_argument('--log_dir', default='runs/pretrain', type=str)
 
 
+parser.add_argument('--seed', default=None, type=int)
 parser.add_argument('--optimizer', default='kfac', type=str)
 parser.add_argument('--batch_size', default=64, type=float)
 parser.add_argument('--epoch', default=100, type=int)
@@ -46,13 +47,19 @@ parser.add_argument('--stat_decay', default=0.95, type=float)
 parser.add_argument('--damping', default=1e-3, type=float)
 parser.add_argument('--kl_clip', default=1e-2, type=float)
 parser.add_argument('--weight_decay', default=3e-3, type=float)
+parser.add_argument('--kernel_fn', default='sob', type=str)
+parser.add_argument('--temp', default=10., type=float)
 parser.add_argument('--TCov', default=10, type=int)
 parser.add_argument('--TScal', default=10, type=int)
 parser.add_argument('--TInv', default=100, type=int)
+parser.add_argument('--extra', default=None, type=str)
 
 
 parser.add_argument('--prefix', default=None, type=str)
 args = parser.parse_args()
+
+# set random seed
+seed = set_random_seed(args.seed)
 
 # init model
 nc = {
@@ -75,6 +82,7 @@ trainloader, testloader = get_dataloader(dataset=args.dataset,
                                          test_batch_size=256)
 
 # init optimizer and lr scheduler
+str_optimizer = args.optimizer
 optim_name = args.optimizer.lower()
 tag = optim_name
 if optim_name == 'sgd':
@@ -92,6 +100,19 @@ elif optim_name == 'kfac':
                               weight_decay=args.weight_decay,
                               TCov=args.TCov,
                               TInv=args.TInv)
+elif optim_name == 'ker_kfac':
+    str_optimizer += '_' + args.kernel_fn
+    optimizer = KerKFACOptimizer(net,
+                              lr=args.learning_rate,
+                              momentum=args.momentum,
+                              stat_decay=args.stat_decay,
+                              damping=args.damping,
+                              kl_clip=args.kl_clip,
+                              weight_decay=args.weight_decay,
+                              kernel_fn=args.kernel_fn,
+                              temp=args.temp,
+                              TCov=args.TCov,
+                              TInv=args.TInv)
 elif optim_name == 'ekfac':
     optimizer = EKFACOptimizer(net,
                                lr=args.learning_rate,
@@ -107,7 +128,7 @@ else:
     raise NotImplementedError
 
 if args.milestone is None:
-    lr_scheduler = MultiStepLR(optimizer, milestones=[int(args.epoch*0.5), int(args.epoch*0.75)], gamma=0.1)
+    lr_scheduler = MultiStepLR(optimizer, milestones=[int(args.epoch*0.4), int(args.epoch*0.8)], gamma=0.1)
 else:
     milestone = [int(_) for _ in args.milestone.split(',')]
     lr_scheduler = MultiStepLR(optimizer, milestones=milestone, gamma=0.1)
@@ -128,9 +149,14 @@ if args.resume:
 
 # init summary writter
 
-log_dir = os.path.join(args.log_dir, args.dataset, args.network, args.optimizer,
-                       'lr%.3f_wd%.4f_damping%.4f' %
-                       (args.learning_rate, args.weight_decay, args.damping))
+if args.extra is None:
+    str_extra = ''
+else:
+    str_extra = '_' + args.extra
+log_dir = os.path.join(args.log_dir, args.dataset, args.network, str_optimizer,
+                       'lr%.3f_wd%.4f_damping%.4f_epoch%d_temp%.1f_seed%d%s' %
+                       (args.learning_rate, args.weight_decay, args.damping, 
+                        args.epoch, args.temp, args.seed, str_extra))
 if not os.path.isdir(log_dir):
     os.makedirs(log_dir)
 writer = SummaryWriter(log_dir)
@@ -153,9 +179,11 @@ def train(epoch):
     for batch_idx, (inputs, targets) in prog_bar:
         inputs, targets = inputs.to(args.device), targets.to(args.device)
         optimizer.zero_grad()
+        if hasattr(optimizer, '_kernel'):
+            optimizer.update_kernel(inputs)
         outputs = net(inputs)
         loss = criterion(outputs, targets)
-        if optim_name in ['kfac', 'ekfac'] and optimizer.steps % optimizer.TCov == 0:
+        if optim_name in ['kfac', 'ker_kfac', 'ekfac'] and optimizer.steps % optimizer.TCov == 0:
             # compute true fisher
             optimizer.acc_stats = True
             with torch.no_grad():

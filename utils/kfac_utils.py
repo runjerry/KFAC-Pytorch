@@ -37,6 +37,18 @@ def update_running_stat(aa, m_aa, stat_decay):
     m_aa *= (1 - stat_decay)
 
 
+def sobolev_kernel(inputs, T=1.0):
+    diff = inputs.unsqueeze(1) - inputs.unsqueeze(0)
+    dist = torch.sum(diff**2, -1).sqrt()
+    dist = dist / T
+    return torch.exp(-dist) * (1 + dist)
+
+
+def sobolev_inv_kernel(inputs, T=1.0):
+    sob_kernel = sobolev_kernel(inputs, T=T)
+    return torch.inverse(sob_kernel)
+
+
 class ComputeMatGrad:
 
     @classmethod
@@ -89,15 +101,15 @@ class ComputeMatGrad:
 class ComputeCovA:
 
     @classmethod
-    def compute_cov_a(cls, a, layer):
-        return cls.__call__(a, layer)
+    def compute_cov_a(cls, a, layer, kernel=None):
+        return cls.__call__(a, layer, kernel=kernel)
 
     @classmethod
-    def __call__(cls, a, layer):
+    def __call__(cls, a, layer, kernel=None):
         if isinstance(layer, nn.Linear):
-            cov_a = cls.linear(a, layer)
+            cov_a = cls.linear(a, layer, kernel=kernel)
         elif isinstance(layer, nn.Conv2d):
-            cov_a = cls.conv2d(a, layer)
+            cov_a = cls.conv2d(a, layer, kernel=kernel)
         else:
             # FIXME(CW): for extension to other layers.
             # raise NotImplementedError
@@ -106,30 +118,41 @@ class ComputeCovA:
         return cov_a
 
     @staticmethod
-    def conv2d(a, layer):
+    def conv2d(a, layer, kernel=None):
         batch_size = a.size(0)
         a = _extract_patches(a, layer.kernel_size, layer.stride, layer.padding)
         spatial_size = a.size(1) * a.size(2)
-        a = a.view(-1, a.size(-1))
+        if kernel is None:
+            a = a.view(-1, a.size(-1))
+        else:
+            a = a.view(batch_size, spatial_size, -1)
         if layer.bias is not None:
-            a = torch.cat([a, a.new(a.size(0), 1).fill_(1)], 1)
-        a = a/spatial_size
+            a = torch.cat([a, a.new(*a.shape[:-1], 1).fill_(1)], -1)
+        a = a / spatial_size
         # FIXME(CW): do we need to divide the output feature map's size?
-        return a.t() @ (a / batch_size)
+        if kernel is None:
+            out =  a.t() @ (a / batch_size)
+        else:
+            out = torch.einsum('ati,ab,btj->ij', a, kernel, a) / kernel.sum()
+        return out
 
     @staticmethod
-    def linear(a, layer):
+    def linear(a, layer, kernel=None):
         # a: batch_size * in_dim
         batch_size = a.size(0)
         if layer.bias is not None:
             a = torch.cat([a, a.new(a.size(0), 1).fill_(1)], 1)
-        return a.t() @ (a / batch_size)
+        if kernel is None:
+            out =  a.t() @ (a / batch_size)
+        else:
+            out = a.t() @ kernel @ (a / kernel.sum())
+        return out
 
 
 class ComputeCovG:
 
     @classmethod
-    def compute_cov_g(cls, g, layer, batch_averaged=False):
+    def compute_cov_g(cls, g, layer, batch_averaged=False, kernel=None):
         """
         :param g: gradient
         :param layer: the corresponding layer
@@ -137,45 +160,51 @@ class ComputeCovG:
         :return:
         """
         # batch_size = g.size(0)
-        return cls.__call__(g, layer, batch_averaged)
+        return cls.__call__(g, layer, batch_averaged, kernel=kernel)
 
     @classmethod
-    def __call__(cls, g, layer, batch_averaged):
+    def __call__(cls, g, layer, batch_averaged, kernel=None):
         if isinstance(layer, nn.Conv2d):
-            cov_g = cls.conv2d(g, layer, batch_averaged)
+            cov_g = cls.conv2d(g, layer, batch_averaged, kernel=kernel)
         elif isinstance(layer, nn.Linear):
-            cov_g = cls.linear(g, layer, batch_averaged)
+            cov_g = cls.linear(g, layer, batch_averaged, kernel=kernel)
         else:
             cov_g = None
 
         return cov_g
 
     @staticmethod
-    def conv2d(g, layer, batch_averaged):
+    def conv2d(g, layer, batch_averaged, kernel=None):
         # g: batch_size * n_filters * out_h * out_w
         # n_filters is actually the output dimension (analogous to Linear layer)
         spatial_size = g.size(2) * g.size(3)
         batch_size = g.shape[0]
         g = g.transpose(1, 2).transpose(2, 3)
         g = try_contiguous(g)
-        g = g.view(-1, g.size(-1))
+        if kernel is None:
+            g = g.view(-1, g.size(-1))
+        else:
+            g = g.view(batch_size, spatial_size, -1)
 
         if batch_averaged:
             g = g * batch_size
         g = g * spatial_size
-        cov_g = g.t() @ (g / g.size(0))
-
+        if kernel is None:
+            cov_g =  g.t() @ (g / g.shape[0])
+        else:
+            cov_g = torch.einsum('ati,ab,btj->ij', g, kernel, g) / (kernel.sum() * spatial_size)
         return cov_g
 
     @staticmethod
-    def linear(g, layer, batch_averaged):
+    def linear(g, layer, batch_averaged, kernel=None):
         # g: batch_size * out_dim
         batch_size = g.size(0)
-
         if batch_averaged:
-            cov_g = g.t() @ (g * batch_size)
+            g = g * batch_size
+        if kernel is None:
+            cov_g =  g.t() @ (g / batch_size)
         else:
-            cov_g = g.t() @ (g / batch_size)
+            cov_g = g.t() @ kernel @ (g / kernel.sum())
         return cov_g
 
 

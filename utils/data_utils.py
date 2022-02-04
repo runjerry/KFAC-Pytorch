@@ -1,3 +1,7 @@
+import numpy as np
+import os
+import random
+import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -55,3 +59,31 @@ def get_dataloader(dataset, train_batch_size, test_batch_size, num_workers=2, ro
                                              num_workers=num_workers)
 
     return trainloader, testloader
+
+
+def set_random_seed(seed):
+    """Set a seed for deterministic behaviors.
+    Note: If someone runs an experiment with a pre-selected manual seed, he can
+    definitely reproduce the results with the same seed; however, if he runs the
+    experiment with seed=None and re-run the experiments using the seed previously
+    returned from this function (e.g. the returned seed might be logged to
+    Tensorboard), and if cudnn is used in the code, then there is no guarantee
+    that the results will be reproduced with the recovered seed.
+    Args:
+        seed (int|None): seed to be used. If None, a default seed based on
+            pid and time will be used.
+    Returns:
+        The seed being used if ``seed`` is None.
+    """
+    if seed is None:
+        seed = int(np.uint32(hash(str(os.getpid()) + '|' + str(time.time()))))
+    else:
+        # torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        # torch.use_deterministic_algorithms(True)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.random.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    return seed
