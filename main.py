@@ -38,14 +38,14 @@ parser.add_argument('--log_dir', default='runs/pretrain', type=str)
 
 parser.add_argument('--seed', default=None, type=int)
 parser.add_argument('--optimizer', default='kfac', type=str)
-parser.add_argument('--batch_size', default=64, type=float)
+parser.add_argument('--batch_size', default=128, type=float)
 parser.add_argument('--epoch', default=100, type=int)
 parser.add_argument('--milestone', default=None, type=str)
 parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--momentum', default=0.9, type=float)
 parser.add_argument('--stat_decay', default=0.95, type=float)
 parser.add_argument('--damping', default=1e-3, type=float)
-parser.add_argument('--kl_clip', default=1e-2, type=float)
+parser.add_argument('--kl_clip', default=None, type=float)
 parser.add_argument('--weight_decay', default=3e-3, type=float)
 parser.add_argument('--kernel_fn', default='sob', type=str)
 parser.add_argument('--temp', default=10., type=float)
@@ -153,10 +153,15 @@ if args.extra is None:
     str_extra = ''
 else:
     str_extra = '_' + args.extra
+if args.kl_clip is None:
+    str_kl = ''
+else:
+    str_kl = '_kl' + ('%.5f' % (args.kl_clip))
+
 log_dir = os.path.join(args.log_dir, args.dataset, args.network, str_optimizer,
-                       'lr%.3f_wd%.4f_damping%.4f_epoch%d_temp%.1f_seed%d%s' %
+                       'lr%.3f_wd%.3f_damping%.3f_temp%.1f_seed%d%s%s' %
                        (args.learning_rate, args.weight_decay, args.damping, 
-                        args.epoch, args.temp, args.seed, str_extra))
+                        args.temp, args.seed, str_kl, str_extra))
 if not os.path.isdir(log_dir):
     os.makedirs(log_dir)
 writer = SummaryWriter(log_dir)

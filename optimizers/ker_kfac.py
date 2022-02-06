@@ -15,7 +15,7 @@ class KerKFACOptimizer(optim.Optimizer):
                  momentum=0.9,
                  stat_decay=0.95,
                  damping=0.001,
-                 kl_clip=0.001,
+                 kl_clip=None,
                  weight_decay=0,
                  kernel_fn=sobolev_kernel,
                  temp=10.,
@@ -209,7 +209,8 @@ class KerKFACOptimizer(optim.Optimizer):
             p_grad_mat = self._get_matrix_form_grad(m, classname)
             v = self._get_natural_grad(m, p_grad_mat, damping)
             updates[m] = v
-        self._kl_clip_and_update_grad(updates, lr)
+        if self.kl_clip is not None:
+            self._kl_clip_and_update_grad(updates, lr)
 
         self._step(closure)
         self.steps += 1
