@@ -10,17 +10,22 @@ import torchvision.transforms as transforms
 def get_transforms(dataset):
     transform_train = None
     transform_test = None
+    T = 20.
     if dataset == 'cifar10':
         transform_train = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            # transforms.Normalize((0.4914, 0.4822, 0.4465), (2.023, 1.994, 2.010)),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023*T, 0.1994*T, 0.2010*T)),
         ])
 
         transform_test = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            # transforms.Normalize((0.4914, 0.4822, 0.4465), (2.023, 1.994, 2.010)),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023*T, 0.1994*T, 0.2010*T)),
         ])
 
     if dataset == 'cifar100':
@@ -28,12 +33,12 @@ def get_transforms(dataset):
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675*T, 0.2565*T, 0.2761*T)),
         ])
 
         transform_test = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675*T, 0.2565*T, 0.2761*T)),
         ])
 
     assert transform_test is not None and transform_train is not None, 'Error, no dataset %s' % dataset

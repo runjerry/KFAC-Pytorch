@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser()
 
 
 parser.add_argument('--network', default='vgg16_bn', type=str)
-parser.add_argument('--depth', default=19, type=int)
+parser.add_argument('--depth', default=32, type=int)
 parser.add_argument('--dataset', default='cifar10', type=str)
 
 # densenet
@@ -38,16 +38,17 @@ parser.add_argument('--log_dir', default='runs/pretrain', type=str)
 
 parser.add_argument('--seed', default=None, type=int)
 parser.add_argument('--optimizer', default='kfac', type=str)
-parser.add_argument('--batch_size', default=64, type=float)
-parser.add_argument('--epoch', default=100, type=int)
+parser.add_argument('--batch_size', default=128, type=float)
+parser.add_argument('--epoch', default=50, type=int)
 parser.add_argument('--milestone', default=None, type=str)
+parser.add_argument('--gamma', default=0.1, type=float)
 parser.add_argument('--learning_rate', default=0.01, type=float)
 parser.add_argument('--momentum', default=0.9, type=float)
 parser.add_argument('--stat_decay', default=0.95, type=float)
 parser.add_argument('--damping', default=1e-3, type=float)
 parser.add_argument('--kl_clip', default=1e-2, type=float)
 parser.add_argument('--weight_decay', default=3e-3, type=float)
-parser.add_argument('--kernel_fn', default='sob', type=str)
+parser.add_argument('--kernel_fn', default='sob_inv', type=str)
 parser.add_argument('--temp', default=10., type=float)
 parser.add_argument('--TCov', default=10, type=int)
 parser.add_argument('--TScal', default=10, type=int)
@@ -128,10 +129,10 @@ else:
     raise NotImplementedError
 
 if args.milestone is None:
-    lr_scheduler = MultiStepLR(optimizer, milestones=[int(args.epoch*0.4), int(args.epoch*0.8)], gamma=0.1)
+    lr_scheduler = MultiStepLR(optimizer, milestones=[int(args.epoch*0.4), int(args.epoch*0.8)], gamma=args.gamma)
 else:
     milestone = [int(_) for _ in args.milestone.split(',')]
-    lr_scheduler = MultiStepLR(optimizer, milestones=milestone, gamma=0.1)
+    lr_scheduler = MultiStepLR(optimizer, milestones=milestone, gamma=args.gamma)
 
 # init criterion
 criterion = nn.CrossEntropyLoss()
@@ -153,10 +154,11 @@ if args.extra is None:
     str_extra = ''
 else:
     str_extra = '_' + args.extra
-log_dir = os.path.join(args.log_dir, args.dataset, args.network, str_optimizer,
-                       'lr%.3f_wd%.4f_damping%.4f_epoch%d_temp%.1f_seed%d%s' %
-                       (args.learning_rate, args.weight_decay, args.damping, 
-                        args.epoch, args.temp, args.seed, str_extra))
+log_dir = os.path.join(
+    args.log_dir, args.dataset, args.network, str_optimizer,
+    'lr%.3f_wd%.4f_damping%.4f_kl%.4f_epoch%d_gamma%.1f_bs%d_temp%.1f_seed%d_depth%d%s' %
+    (args.learning_rate, args.weight_decay, args.damping, args.kl_clip,
+     args.epoch, args.gamma, args.batch_size, args.temp, args.seed, args.depth, str_extra))
 if not os.path.isdir(log_dir):
     os.makedirs(log_dir)
 writer = SummaryWriter(log_dir)
