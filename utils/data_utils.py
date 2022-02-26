@@ -10,7 +10,7 @@ import torchvision.transforms as transforms
 def get_transforms(dataset):
     transform_train = None
     transform_test = None
-    T = 20.
+    T = 1.
     if dataset == 'cifar10':
         transform_train = transforms.Compose([
             transforms.RandomCrop(32, padding=4),

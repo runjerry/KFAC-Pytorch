@@ -43,10 +43,19 @@ def sobolev_kernel(inputs, T=1.0):
     dist = dist / T
     return torch.exp(-dist) * (1 + dist)
 
-
 def sobolev_inv_kernel(inputs, T=1.0):
     sob_kernel = sobolev_kernel(inputs, T=T)
     return torch.inverse(sob_kernel)
+
+
+def gaussian_kernel(inputs, T=1.0):
+    diff = inputs.unsqueeze(1) - inputs.unsqueeze(0)
+    dist = torch.sum(diff**2, -1)
+    return torch.exp(-dist/T)
+
+def gaussian_inv_kernel(inputs, T=1.0):
+    g_kernel = gaussian_kernel(inputs, T=T)
+    return torch.inverse(g_kernel)
 
 
 class ComputeMatGrad:

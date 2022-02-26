@@ -6,6 +6,7 @@ import torch.optim as optim
 from utils.kfac_utils import (ComputeCovA, ComputeCovG)
 from utils.kfac_utils import update_running_stat
 from utils.kfac_utils import sobolev_kernel, sobolev_inv_kernel
+from utils.kfac_utils import gaussian_kernel, gaussian_inv_kernel
 
 
 class KerKFACOptimizer(optim.Optimizer):
@@ -55,6 +56,10 @@ class KerKFACOptimizer(optim.Optimizer):
             self._kernel_fn = sobolev_kernel
         elif kernel_fn == 'sob_inv':
             self._kernel_fn = sobolev_inv_kernel
+        elif kernel_fn == 'gauss':
+            self._kernel_fn = gaussian_kernel
+        elif kernel_fn == 'gauss_inv':
+            self._kernel_fn = gaussian_inv_kernel
         else:
             raise ValueError("Invalid kernel_fn: {}".format(kernel_fn))
         self._kernel = None
