@@ -31,12 +31,12 @@ def get_transforms(dataset):
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675*T, 0.2565*T, 0.2761*T)),
         ])
 
         transform_test = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675*T, 0.2565*T, 0.2761*T)),
         ])
 
     assert transform_test is not None and transform_train is not None, 'Error, no dataset %s' % dataset
