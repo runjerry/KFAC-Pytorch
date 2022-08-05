@@ -37,15 +37,20 @@ def update_running_stat(aa, m_aa, stat_decay):
     m_aa *= (1 - stat_decay)
 
 
-def sobolev_kernel(inputs, T=1.0):
+def sobolev_kernel(inputs, s=1.0, T=1.0):
     diff = inputs.unsqueeze(1) - inputs.unsqueeze(0)
     dist = torch.sum(diff**2, -1).sqrt()
     dist = dist / T
-    return torch.exp(-dist) * (1 + dist)
+    if s == 1.0:
+        return torch.exp(-dist) * (1 + dist)
+    elif s == 2.0:
+        return torch.exp(-dist) * (1 + dist + dist*dist/3)
+    else:
+        raise ValueError ("Sobolev parameter s has to be 1. or 2.")
 
 
-def sobolev_inv_kernel(inputs, T=1.0):
-    sob_kernel = sobolev_kernel(inputs, T=T)
+def sobolev_inv_kernel(inputs, s=1.0, T=1.0):
+    sob_kernel = sobolev_kernel(inputs, s=s, T=T)
     return torch.inverse(sob_kernel)
 
 

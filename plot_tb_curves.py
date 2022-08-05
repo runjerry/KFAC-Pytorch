@@ -140,6 +140,7 @@ class MeanCurveReader(object):
     def __init__(self,
                  event_file,
                  x_steps=None,
+                 x_scale='step',
                  name="MeanCurveReader",
                  smoothing=None,
                  interval_mode="std"):
@@ -164,6 +165,7 @@ class MeanCurveReader(object):
                 range will be automatically determined as in the example if this
                 argument ``x_steps==None``. Alternatively, the user can specify
                 a pre-defined list of integers for interpolation.
+            x_scale (str): ``step`` or ``relative``.
             name (str): name of the mean curve.
             smoothing (int | float): if None, no smoothing is applied; if int,
                 it's the window width of a Savitzky-Golay filter; if float,
@@ -192,7 +194,13 @@ class MeanCurveReader(object):
         if x_steps is None:
             max_x, min_x, num_steps = int(1e15), 0, 0
             for scalar_events in scalar_events_list:
-                steps = [se.step for se in scalar_events]
+                if x_scale == 'step':
+                    steps = [se.step for se in scalar_events]
+                elif x_scale == 'relative':
+                    t0 = scalar_events[0].wall_time
+                    steps = [se.wall_time - t0 for se in scalar_events]
+                else:
+                    raise ValueError("Invalid x_scale value: {}".format(x_scale))
                 max_x = min(max_x, steps[-1])
                 min_x = max(min_x, steps[0])
                 # In case we always summarize every step in the first interval,
@@ -206,7 +214,13 @@ class MeanCurveReader(object):
             x_steps = np.arange(num_steps) * delta_x + min_x
 
         for scalar_events in scalar_events_list:
-            steps, values = zip(*[(se.step, se.value) for se in scalar_events])
+            if x_scale == 'step':
+                steps, values = zip(*[(se.step, se.value) for se in scalar_events])
+            elif x_scale == 'relative':
+                t0 = scalar_events[0].wall_time
+                steps, values = zip(*[(se.wall_time - t0, se.value) for se in scalar_events])
+            else:
+                raise ValueError("Invalid x_scale value: {}".format(x_scale))
             y = self._interpolate_and_smooth_if_necessary(
                 steps, values, x_steps, smoothing)
             ys.append(np.array(y))
@@ -252,7 +266,7 @@ class MeanCurveReader(object):
                 interpolated and smoothed y values.
         """
         # a rouch check to make sure the interpolation won't be too much
-        assert abs(steps[-1] - output_x[-1]) / output_x[-1] < 0.05, (
+        assert abs(steps[-1] - output_x[-1]) / output_x[-1] < 0.2, (
             "Inconsistent final steps! actual %d output %d" % (steps[-1],
                                                                output_x[-1]))
 
@@ -322,7 +336,8 @@ class TrainAccReader(MeanCurveReader):
 
     @property
     def x_label(self):
-        return "Training Epochs"
+        # return "Training Epochs"
+        return "Training time (seconds)"
 
     @property
     def y_label(self):
@@ -337,11 +352,12 @@ class TrainLossReader(MeanCurveReader):
 
     @property
     def x_label(self):
-        return "Training Epochs"
+        # return "Training Epochs"
+        return "Training time (seconds)"
 
     @property
     def y_label(self):
-        return "Training Accuracy"
+        return "Training Loss"
 
 
 class TestAccReader(MeanCurveReader):
@@ -352,7 +368,8 @@ class TestAccReader(MeanCurveReader):
 
     @property
     def x_label(self):
-        return "Training Epochs"
+        # return "Training Epochs"
+        return "Training time (seconds)"
 
     @property
     def y_label(self):
@@ -542,23 +559,54 @@ class CurvesPlotter(object):
 
 
 def _get_curve_path(dataset, method, seed=0):
-    # # ours vs baseline
-    # return os.path.join(os.getenv("HOME"), 
-    #                     "Workspace/KFAC-Pytorch/runs/pretrain", 
-    #                     dataset, "vgg16_bn/plot", method, "seed%d" % (seed))
 
-    # baseline abblation
+    # ours vs baseline
     return os.path.join(os.getenv("HOME"), 
                         "Workspace/KFAC-Pytorch/runs/pretrain", 
-                        dataset, "vgg16_bn/plot_baseline", method)
+                        dataset, "vgg11_bn/plot", method, "seed%d" % (seed))
+
+    # # baseline abblation
+    # return os.path.join(os.getenv("HOME"), 
+    #                     "Workspace/KFAC-Pytorch/runs/pretrain", 
+    #                     dataset, "vgg11_bn/plot", method)
 
 
 if __name__ == "__main__":
     """Plotting examples."""
-    # # ours vs baseline
-    # methods = ["baseline", "ours"]
-    # seeds = [0, 1, 2, 3]
-    # dataset = "cifar10"
+    # ours vs baseline
+    methods = ["baseline", "ours"]
+    seeds = [0, 1, 2, 3]
+    # dataset = "fashion_mnist"
+    dataset = "cifar10"
+    # curve_name = "testacc"
+    # curve_name = "trainacc"
+    curve_name = "trainloss"
+
+    curve_readers = [[
+        # TestAccReader(
+        # TrainAccReader(
+        TrainLossReader(
+            event_file=[_get_curve_path(dataset, method, seed) for seed in seeds],
+            # x_steps=np.arange(0, 50),
+            x_scale='relative',
+            name="%s" % (method)) 
+    ] for method in methods]
+
+    # Scale and align x-axis of SAC and DDPG on task "kickball"
+    plotter = CurvesPlotter([cr[0]() for cr in curve_readers],
+                            x_label=curve_readers[0][0].x_label,
+                            y_label=curve_readers[0][0].y_label,
+                            # y_range=(0, 100),
+                            x_range=(0, 50),
+                            linewidth=2)
+    plotter.plot(output_path="./plots/rebuttal/%s_%s.png" % (dataset, curve_name))
+
+
+    # # abblation for baseline
+    # methods = ["baseline", "baseline_lr", "baseline_scale", "baseline_lr_scale"]
+
+    # dataset = "fashion_mnist"
+    # # dataset = "cifar100"
     # curve_name = "testacc"
     # # curve_name = "trainacc"
     # # curve_name = "trainloss"
@@ -567,7 +615,7 @@ if __name__ == "__main__":
     #     TestAccReader(
     #     # TrainAccReader(
     #     # TrainLossReader(
-    #         event_file=[_get_curve_path(dataset, method, seed) for seed in seeds],
+    #         event_file=[_get_curve_path(dataset, method)],
     #         # x_steps=np.arange(0, 50),
     #         name="%s" % (method)) 
     # ] for method in methods]
@@ -579,30 +627,4 @@ if __name__ == "__main__":
     #                         # y_range=(0, 100),
     #                         x_range=(0, 50),
     #                         linewidth=2)
-    # plotter.plot(output_path="./plots/%s_%s.png" % (dataset, curve_name))
-
-
-    # abblation for baseline
-    methods = ["baseline", "baseline_lr", "baseline_scale", "baseline_lr_scale"]
-    dataset = "cifar100"
-    curve_name = "testacc"
-    # curve_name = "trainacc"
-    # curve_name = "trainloss"
-
-    curve_readers = [[
-        TestAccReader(
-        # TrainAccReader(
-        # TrainLossReader(
-            event_file=[_get_curve_path(dataset, method)],
-            # x_steps=np.arange(0, 50),
-            name="%s" % (method)) 
-    ] for method in methods]
-
-    # Scale and align x-axis of SAC and DDPG on task "kickball"
-    plotter = CurvesPlotter([cr[0]() for cr in curve_readers],
-                            x_label=curve_readers[0][0].x_label,
-                            y_label=curve_readers[0][0].y_label,
-                            # y_range=(0, 100),
-                            x_range=(0, 50),
-                            linewidth=2)
-    plotter.plot(output_path="./plots/baseline_%s_%s.png" % (dataset, curve_name))
+    # plotter.plot(output_path="./plots/baseline_%s_%s.png" % (dataset, curve_name))

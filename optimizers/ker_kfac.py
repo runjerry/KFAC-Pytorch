@@ -18,7 +18,8 @@ class KerKFACOptimizer(optim.Optimizer):
                  kl_clip=0.001,
                  weight_decay=0,
                  kernel_fn=sobolev_kernel,
-                 temp=10.,
+                 sob_s=1.0,
+                 temp=1.,
                  TCov=10,
                  TInv=100,
                  batch_averaged=True):
@@ -58,6 +59,7 @@ class KerKFACOptimizer(optim.Optimizer):
         else:
             raise ValueError("Invalid kernel_fn: {}".format(kernel_fn))
         self._kernel = None
+        self._sob_s = sob_s
         self._temp = temp
 
         self.kl_clip = kl_clip
@@ -66,7 +68,7 @@ class KerKFACOptimizer(optim.Optimizer):
 
     def update_kernel(self, inputs):
         batch_inputs = inputs.reshape(inputs.shape[0], -1)
-        self._kernel = self._kernel_fn(batch_inputs, T=self._temp) #.sqrt()
+        self._kernel = self._kernel_fn(batch_inputs, s=self._sob_s, T=self._temp) #.sqrt()
 
     def _save_input(self, module, input):
         if torch.is_grad_enabled() and self.steps % self.TCov == 0:
