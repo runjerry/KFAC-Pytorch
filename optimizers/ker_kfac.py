@@ -1,11 +1,12 @@
 import math
 
+import alf
 import torch
 import torch.optim as optim
 
 from utils.kfac_utils import (ComputeCovA, ComputeCovG)
 from utils.kfac_utils import update_running_stat
-from utils.kfac_utils import sobolev_kernel, sobolev_inv_kernel
+from utils.kfac_utils import sobolev_kernel, sobolev_inv_kernel, LSI_kernel
 
 
 class KerKFACOptimizer(optim.Optimizer):
@@ -18,6 +19,9 @@ class KerKFACOptimizer(optim.Optimizer):
                  kl_clip=0.001,
                  weight_decay=0,
                  kernel_fn=sobolev_kernel,
+                 kernel_size=3,
+                 stride=1,
+                 padding=1,
                  sob_s=1.0,
                  temp=1.,
                  TCov=10,
@@ -51,13 +55,19 @@ class KerKFACOptimizer(optim.Optimizer):
         self.Q_a, self.Q_g = {}, {}
         self.d_a, self.d_g = {}, {}
         self.stat_decay = stat_decay
+        self.unfold = torch.nn.Unfold(kernel_size=kernel_size, 
+                                      stride=stride,
+                                      padding=padding)
 
         if kernel_fn == 'sob': 
             self._kernel_fn = sobolev_kernel
         elif kernel_fn == 'sob_inv':
             self._kernel_fn = sobolev_inv_kernel
+        elif kernel_fn == 'LSI':
+            self._kernel_fn = LSI_kernel
         else:
             raise ValueError("Invalid kernel_fn: {}".format(kernel_fn))
+        self._kernel_fn_name = kernel_fn
         self._kernel = None
         self._sob_s = sob_s
         self._temp = temp
@@ -67,8 +77,20 @@ class KerKFACOptimizer(optim.Optimizer):
         self.TInv = TInv
 
     def update_kernel(self, inputs):
-        batch_inputs = inputs.reshape(inputs.shape[0], -1)
-        self._kernel = self._kernel_fn(batch_inputs, s=self._sob_s, T=self._temp) #.sqrt()
+        if self._kernel_fn_name == 'LSI': 
+            # split into four patches/subimages
+            h = inputs.shape[2]
+            w = inputs.shape[3]
+            inputs1 = inputs[:, :, :int(h/2), :int(w/2)]
+            inputs2 = inputs[:, :, int(h/2):, :int(w/2)]
+            inputs3 = inputs[:, :, :int(h/2), int(w/2):]
+            inputs4 = inputs[:, :, int(h/2):, int(w/2):]
+            inputs = alf.nest.map_structure(
+                lambda x: self.unfold(x).transpose(1, 2),
+                (inputs1, inputs2, inputs3, inputs4))
+        else:
+            inputs = inputs.reshape(inputs.shape[0], -1)
+        self._kernel = self._kernel_fn(inputs, s=self._sob_s, T=self._temp) #.sqrt()
 
     def _save_input(self, module, input):
         if torch.is_grad_enabled() and self.steps % self.TCov == 0:

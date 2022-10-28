@@ -52,8 +52,8 @@ class VGG(nn.Module):
 
 def make_layers(cfg, batch_norm=False):
     layers = []
-    # in_channels = 3
-    in_channels = 1  # for fashion_mnist
+    in_channels = 3
+    # in_channels = 1  # for fashion_mnist
     for v in cfg:
         if v == 'M':
             layers += [nn.MaxPool2d(kernel_size=2, stride=2)]

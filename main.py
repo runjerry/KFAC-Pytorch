@@ -11,6 +11,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from utils.network_utils import get_network
 from utils.data_utils import get_dataloader, set_random_seed
+from utils.kfac_utils import extract_patches
 
 
 # fetch args
@@ -48,7 +49,8 @@ parser.add_argument('--stat_decay', default=0.95, type=float)
 parser.add_argument('--damping', default=0.03, type=float)
 parser.add_argument('--kl_clip', default=1e-2, type=float)
 parser.add_argument('--weight_decay', default=3e-3, type=float)
-parser.add_argument('--kernel_fn', default='sob_inv', type=str)
+parser.add_argument('--kernel_fn', default='LSI', type=str)
+# parser.add_argument('--kernel_fn', default='sob_inv', type=str)
 parser.add_argument('--sob_s', default=1.0, type=float)
 parser.add_argument('--temp', default=1., type=float)
 parser.add_argument('--scale', default=1., type=float)
@@ -163,8 +165,8 @@ log_dir = os.path.join(
     args.log_dir, args.dataset, args.network, str_optimizer,
     # 'plot',
     # 'seed%d' % args.seed)
-    'lr%.3f_wd%.4f_damping%.4f_kl%.4f_epoch%d_gamma%.2f_bs%d_scale%.1f_seed%d%s' %
-    (args.learning_rate, args.weight_decay, args.damping, args.kl_clip,
+    'sob-%d_lr%.3f_wd%.4f_damping%.4f_kl%.4f_epoch%d_gamma%.2f_bs%d_scale%.1f_seed%d%s' %
+    (args.sob_s, args.learning_rate, args.weight_decay, args.damping, args.kl_clip,
      args.epoch, args.gamma, args.batch_size, args.scale, args.seed, str_extra))
 if not os.path.isdir(log_dir):
     os.makedirs(log_dir)

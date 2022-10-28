@@ -1,3 +1,4 @@
+import alf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,11 +38,54 @@ def update_running_stat(aa, m_aa, stat_decay):
     m_aa *= (1 - stat_decay)
 
 
+def local_sobolev_kernel(x, s=1.0):
+    dist = (x.unsqueeze(1).unsqueeze(-1) - x.unsqueeze(0).unsqueeze(-2)).abs()
+    if s == 0.:
+        sob_dist = torch.exp(-dist)
+    elif s == 1.0:
+        sob_dist = torch.exp(-dist) * (1 + dist)
+    elif s == 2.0:
+        sob_dist = torch.exp(-dist) * (1 + dist + dist*dist/3)
+    else:
+        raise ValueError ("Sobolev parameter s has to be 1. or 2.")
+    breakpoint()
+    local_sob_kernel = sob_dist.mean(dim=(-1, -2))
+    return local_sob_kernel
+
+def LSI_kernel(inputs, s=1.0, T=1.0):
+    """Locally shift invariant kernel. """
+
+    # # [bs, in_c, in_h, in_w] to [bs, n_h, n_w, in_c*h*w]
+    # inputs1 = _extract_patches(inputs, (h, w), (stride, stride), (0, 0))
+    # # [bs, n_pathces, in_c*h*w]
+    # inputs = inputs.reshape(inputs.shape[0], -1, inputs.shape[-1])
+    # dist = (inputs.unsqueeze(1).unsqueeze(-1) - inputs.unsqueeze(0).unsqueeze(-2)).abs()
+
+    # inputs should be tensor or tuple of tensors of shape [bs, np, c*h*w]
+
+    # if s == 0.:
+    #     sob_dist = torch.exp(-dist)
+    # elif s == 1.0:
+    #     sob_dist = torch.exp(-dist) * (1 + dist)
+    # elif s == 2.0:
+    #     sob_dist = torch.exp(-dist) * (1 + dist + dist*dist/3)
+    # else:
+    #     raise ValueError ("Sobolev parameter s has to be 1. or 2.")
+    # sob_kernel = sob_dist.mean(dim=(-1, -2)).sum(-1)
+
+    patch_kernel = alf.nest.map_structure(local_sobolev_kernel, inputs)
+
+    return torch.inverse(sob_kernel)
+
+
+
 def sobolev_kernel(inputs, s=1.0, T=1.0):
     diff = inputs.unsqueeze(1) - inputs.unsqueeze(0)
     dist = torch.sum(diff**2, -1).sqrt()
     dist = dist / T
-    if s == 1.0:
+    if s == 0.0:
+        return torch.exp(-dist)
+    elif s == 1.0:
         return torch.exp(-dist) * (1 + dist)
     elif s == 2.0:
         return torch.exp(-dist) * (1 + dist + dist*dist/3)
@@ -50,6 +94,7 @@ def sobolev_kernel(inputs, s=1.0, T=1.0):
 
 
 def sobolev_inv_kernel(inputs, s=1.0, T=1.0):
+    breakpoint()
     sob_kernel = sobolev_kernel(inputs, s=s, T=T)
     return torch.inverse(sob_kernel)
 
